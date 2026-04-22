@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keine Ahnung Reclear Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;600;800&display=swap');
+        
+:root {
+    /* Standardwerte, falls JS noch nicht geladen hat */
+    --primary: #38bdf8;
+    --bg-glow: rgba(56, 189, 248, 0.15); 
+}
+
+body { 
+    background-color: #050505; 
+    color: #f1f5f9; 
+    font-family: 'Roboto', sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+}
+
+
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at top, var(--bg-glow) 0%, transparent 80%);
+    pointer-events: none;
+    z-index: -1;
+    transition: all 0.8s ease-in-out;
+}
+
+        .gradient-title {
+            background: linear-gradient(90deg, var(--primary) 0%, #FFFFFF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+.boss-card { 
+            background-color: #0f172a; 
+            border: 1px solid #1e293b; 
+            transition: all 0.3s ease;
+            border-radius: 12px; /* Runde Kanten */
+            overflow: hidden;    /* Wichtig: Bild wird an den Kanten mit gerundet */
+            position: relative;
+            top: 0;
+        }
+        
+        .boss-card:hover { 
+            border-color: var(--primary); 
+            transform: translateY(-1px); /* Die Karte hebt sich beim Mouseover */
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4); /* Leichter Schatten für Tiefe */
+        }
+
+        .boss-image { 
+            height: 90px; 
+            width: 100%; 
+            object-fit: cover; 
+            opacity: 0.6;
+            filter: brightness(0.7) contrast(1.2);
+            display: block;
+        }
+
+        .text-accent { color: var(--primary); }
+        .bg-accent { background-color: var(--primary); }
+        .border-accent { border-color: var(--primary); }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+        select option {
+            background-color: #0f172a;
+            color: white;
+        }
+		.buff-sidebar {
+    background: rgba(15, 23, 42, 0.6);
+    border-left: 1px solid rgba(56, 189, 248, 0.1);
+    padding: 15px;
+    height: fit-content;
+    position: sticky;
+    top: 20px;
+    border-radius: 12px;
+}
+
+.buff-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    font-size: 12px;
+}
+
+.buff-item:last-child { border: none; }
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+.dot-ok { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+.dot-missing { background: #ef4444; opacity: 0.3; }
+.setup-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+    margin-top: 20px;
+}
+.stat-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 8px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+    </style>
+</head>
+<body class="p-4 md:p-10">
+
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-end mb-6"> <div class="flex flex-col items-center gap-2">
+            <span class="text-[12px] text-slate-200 font-black uppercase tracking-[0.3em]">Theme Color</span>
+            <div class="flex gap-2 items-center bg-[#0f172a] p-2.5 px-4 rounded-xl border border-[#1e293b] shadow-lg">
+                <button onclick="setTheme('#38bdf8')" class="w-4 h-4 rounded-full bg-[#38bdf8] border border-white/10 hover:scale-110 active:scale-90 transition"></button>
+                <button onclick="setTheme('#ef4444')" class="w-4 h-4 rounded-full bg-[#ef4444] border border-white/10 hover:scale-110 active:scale-90 transition"></button>
+                <button onclick="setTheme('#22c55e')" class="w-4 h-4 rounded-full bg-[#22c55e] border border-white/10 hover:scale-110 active:scale-90 transition"></button>
+                <button onclick="setTheme('#a855f7')" class="w-4 h-4 rounded-full bg-[#a855f7] border border-white/10 hover:scale-110 active:scale-90 transition"></button>
+                <button onclick="setTheme('#ff7912')" class="w-4 h-4 rounded-full bg-[#ff7912] border border-white/10 hover:scale-110 active:scale-90 transition"></button>
+                <button onclick="setTheme('#919191')" class="w-4 h-4 rounded-full bg-[#919191] border border-white/10 hover:scale-110 active:scale-90 transition"></button>
+                <button onclick="setTheme('#fffb1f')" class="w-4 h-4 rounded-full bg-[#fffb1f] border border-white/10 hover:scale-110 active:scale-90 transition"></button>
+                <button onclick="setTheme('#f570ff')" class="w-4 h-4 rounded-full bg-[#f570ff] border border-white/10 hover:scale-110 active:scale-90 transition"></button>
+            </div>
+        </div>
+
+            <div class="flex gap-2">
+                <div id="loginSection" class="flex gap-2 items-center bg-[#0f172a] p-2 rounded border border-[#1e293b]">
+                    <input id="adminPassword" type="password" placeholder="Password" class="bg-black/40 border border-[#1e293b] p-1 text-xs rounded outline-none text-white w-40">
+                    <button onclick="checkLogin()" class="text-[10px] bg-accent text-black px-3 py-1 rounded font-bold uppercase">Login</button>
+                </div>
+                <div id="logoutSection" class="hidden flex gap-4 items-center bg-[#0f172a] p-2 rounded border border-accent">
+                    <span class="text-accent text-[12px] font-bold uppercase">Admin</span>
+                    <button onclick="logout()" class="text-[12px] text-slate-400 hover:text-white uppercase font-bold">Logout</button>
+                </div>
+            </div>
+        </div>
+
+        <header class="text-center mb-8">
+            <h1 class="text-5xl font-black uppercase italic gradient-title mb-2">Keine Ahnung</h1>
+            <p class="text-[10px] font-bold text-accent tracking-[0.5em] uppercase opacity-70">Reclear Checker</p>
+        </header>
+
+        <nav class="flex gap-4 mb-8 border-b border-[#1e293b]">
+            <button onclick="switchTab('overview')" id="nav-overview" class="pb-2 px-4 text-accent border-b-2 border-accent font-bold uppercase text-xs tracking-widest">Übersicht</button>
+            <button onclick="switchTab('setup')" id="nav-setup" class="pb-2 px-4 text-slate-500 font-bold uppercase text-xs tracking-widest">Setup Manager</button>
+        </nav>
+
+        <div id="tab-overview">
+            <div class="bg-[#0f172a] p-6 rounded-xl mb-10 border border-[#1e293b] shadow-2xl">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                    <div>
+                        <label class="block text-[10px] font-bold text-accent mb-1 uppercase tracking-widest">Charakter</label>
+                        <select id="playerName" onchange="updateSelectColor()" class="w-full bg-black/40 border border-[#1e293b] p-3 rounded outline-none focus:border-accent font-bold text-white"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-accent mb-1 uppercase tracking-widest">Boss</label>
+                        <select id="bossSelect" class="w-full bg-black/40 border border-[#1e293b] p-3 rounded outline-none focus:border-accent text-white"></select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-accent mb-1 uppercase tracking-widest">Status</label>
+                        <select id="statusSelect" class="w-full bg-black/40 border border-[#1e293b] p-3 rounded text-accent font-bold outline-none uppercase">
+                            <option value="need">✦ Need Loot</option>
+                            <option value="pass">✧ Pass</option>
+                        </select>
+                    </div>
+                    <button onclick="addEntry()" id="saveBtn" class="bg-accent hover:bg-white text-black font-black py-3 rounded transition-all uppercase text-sm">
+                        Speichern
+                    </button>
+                    <div class="md:col-span-4">
+                        <input id="playerNote" type="text" placeholder="Notiz (optional)..." class="w-full bg-black/40 border border-[#1e293b] p-3 rounded outline-none focus:border-accent text-white">
+                    </div>
+                </div>
+            </div>
+
+            <div id="bossGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12"></div>
+
+            <div class="bg-[#0f172a] rounded-xl border border-[#1e293b] overflow-hidden">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-black/40 text-slate-400 uppercase font-bold">
+                        <tr>
+                            <th class="p-4">Spieler</th>
+                            <th class="p-4">Boss</th>
+                            <th class="p-4">Status</th>
+                            <th class="p-4">Notiz</th>
+							<th class="p-4">Datum</th>
+                            <th id="adminActionHeader" class="p-4 text-right pr-6 hidden">Aktion</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fullTableBody" class="divide-y divide-[#1e293b]/50"></tbody>
+                </table>
+            </div>
+            <button id="resetBtn" onclick="clearData()" class="hidden mt-4 text-[10px] text-slate-600 hover:text-red-500 uppercase font-bold">Reset Database</button>
+        </div>
+
+        <div id="tab-setup" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div class="lg:col-span-1 space-y-2" id="setupBossList"></div>
+                <div class="lg:col-span-3 bg-[#0f172a] p-6 rounded-xl border border-[#1e293b]" id="setupContent">
+                    <p class="text-slate-500 italic text-center py-10">Boss wählen.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://vkaygibhlfgilbnpnrhs.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZrYXlnaWJobGZnaWxibnBucmhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3OTg5MjgsImV4cCI6MjA5MjM3NDkyOH0.Quf6d9T_GKv8RhR_IYH1zPfPDR5mf_TgY-im-Kd6Gjk';
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const _0x4a21 = "YmxhY2ttb29yZQ==";
+        let data = [];
+        let activeSetups = JSON.parse(localStorage.getItem('wowSetups_v1')) || {};
+        let isAdmin = localStorage.getItem('adminLoggedIn') === 'true';
+        let currentSetupBoss = null;
+
+        const classColors = {
+            "Death Knight": "#C41E3A", "Demon Hunter": "#A330C9", "Druid": "#FF7C0A",
+            "Evoker": "#33937F", "Hunter": "#AAD372", "Mage": "#3FC7EB",
+            "Monk": "#00FF98", "Paladin": "#F48CBA", "Priest": "#FFFFFF",
+            "Rogue": "#FFF468", "Shaman": "#0070DD", "Warlock": "#8788EE", "Warrior": "#C69B6D"
+        };
+
+        const gildenSpieler = [
+            { name: "Akurian", class: "Priest", role: "Heiler" }, { name: "Anra", class: "Death Knight", role: "DPS" },
+            { name: "Elanaria", class: "Druid", role: "DPS" }, { name: "Feriamii", class: "Mage", role: "DPS" },
+            { name: "Ghxul", class: "Evoker", role: "DPS" }, { name: "Gnarku", class: "Warrior", role: "DPS" },
+            { name: "Gøt", class: "Shaman", role: "Heal" }, { name: "Härriwar", class: "Warrior", role: "Tank" },
+            { name: "Hartzfistftw", class: "Monk", role: "Heal" }, { name: "Isdrén", class: "Paladin", role: "DPS" },
+            { name: "Jokoremix", class: "Hunter", role: "DPS" }, { name: "Juviie", class: "Paladin", role: "Heal" },
+            { name: "Kanderadk", class: "Death Knight", role: "Tank" }, { name: "Kurrysp", class: "Priest", role: "DPS" },
+            { name: "Lazyglue", class: "Mage", role: "DPS" }, { name: "Murasakiirô", class: "Druid", role: "DPS" },
+            { name: "Narai", class: "Rogue", role: "DPS" }, { name: "Nezgul", class: "Warlock", role: "DPS" },
+            { name: "Odïïn", class: "Shaman", role: "DPS" }, { name: "Renokopter", class: "Druid", role: "Heal" },
+            { name: "Roonooroo", class: "Evoker", role: "Heal" }, { name: "Shadowhúntr", class: "Demon Hunter", role: "DPS" },
+            { name: "Skavie", class: "Warlock", role: "DPS" }, { name: "Wuuschsnipe", class: "Hunter", role: "DPS" },
+            { name: "Zuridk", class: "Death Knight", role: "DPS" }, { name: "Zvoker", class: "Evoker", role: "DPS" }
+        ];
+
+        const bossConfig = {
+            "Chimaerus": "https://warcraft.wiki.gg/images/Chimaerus.jpg",
+            "Imperator Averzian": "https://warcraft.wiki.gg/images/Imperator_Averzian.jpg",
+            "Vorasius": "https://warcraft.wiki.gg/images/Vorasius.jpg",
+            "Fallen-King Salhadaar": "https://warcraft.wiki.gg/images/Fallen-King_Salhadaar.jpg",
+            "Vaelgor & Ezzorak": "https://warcraft.wiki.gg/images/Vaelgor_%26_Ezzorak.jpg",
+            "Lightblinded Vanguard": "https://warcraft.wiki.gg/images/Lightblinded_Vanguard.jpg",
+            "Crown of the Cosmos": "https://warcraft.wiki.gg/images/Crown_of_the_Cosmos.jpg",
+            "Beloren, Child of Alar": "https://warcraft.wiki.gg/images/Belo%27ren.jpg",
+            "Midnight Falls": "https://warcraft.wiki.gg/images/Midnight_Falls.jpg"
+        };
+
+        async function fetchData() {
+            const { data: res, error } = await _supabase.from('loot_entries').select('*').order('created_at', { ascending: false });
+            if (error) console.error(error);
+            else { data = res; render(); if(currentSetupBoss) selectSetupBoss(currentSetupBoss); }
+        }
+
+        async function addEntry() {
+            const name = document.getElementById('playerName').value;
+            const pInfo = gildenSpieler.find(p => p.name === name);
+            const boss = document.getElementById('bossSelect').value;
+            const status = document.getElementById('statusSelect').value;
+            const note = document.getElementById('playerNote').value;
+            if (!pInfo) { alert("Bitte Spieler wählen!"); return; }
+            const btn = document.getElementById('saveBtn');
+            btn.disabled = true; btn.innerText = "...";
+            await _supabase.from('loot_entries').insert([{ name: pInfo.name, charClass: pInfo.class, role: pInfo.role, boss, status, note }]);
+            document.getElementById('playerNote').value = "";
+            btn.disabled = false; btn.innerText = "Speichern";
+            fetchData();
+        }
+
+async function addEntry() {
+    const name = document.getElementById('playerName').value;
+    const pInfo = gildenSpieler.find(p => p.name === name);
+    const boss = document.getElementById('bossSelect').value;
+    const status = document.getElementById('statusSelect').value;
+    const note = document.getElementById('playerNote').value;
+
+    if (!pInfo) { alert("Bitte Spieler wählen!"); return; }
+
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true; 
+    btn.innerText = "...";
+
+
+    const { data: existingEntries, error: checkError } = await _supabase
+        .from('loot_entries')
+        .select('id')
+        .eq('name', pInfo.name)
+        .eq('boss', boss);
+
+    if (checkError) {
+        console.error("Fehler beim Check:", checkError);
+    } else if (existingEntries && existingEntries.length > 0) {
+        const entryId = existingEntries[0].id;
+        await _supabase
+            .from('loot_entries')
+            .update({ 
+                status: status, 
+                note: note,
+                created_at: new Date().toISOString() 
+            })
+            .eq('id', entryId);
+    } else {
+	
+        await _supabase
+            .from('loot_entries')
+            .insert([{ 
+                name: pInfo.name, 
+                charClass: pInfo.class, 
+                role: pInfo.role, 
+                boss, 
+                status, 
+                note 
+            }]);
+    }
+
+    document.getElementById('playerNote').value = "";
+    btn.disabled = false; 
+    btn.innerText = "Speichern";
+    fetchData();
+}
+
+        async function clearData() {
+            if(isAdmin && confirm("Wirklich ALLES löschen?")) {
+                await _supabase.from('loot_entries').delete().neq('id', 0);
+                fetchData();
+            }
+        }
+
+        function render() {
+            const grid = document.getElementById('bossGrid');
+            const table = document.getElementById('fullTableBody');
+            const accent = getComputedStyle(document.documentElement).getPropertyValue('--primary');
+            grid.innerHTML = ""; table.innerHTML = "";
+            
+            document.getElementById('adminActionHeader').classList.toggle('hidden', !isAdmin);
+            document.getElementById('resetBtn').classList.toggle('hidden', !isAdmin);
+
+Object.keys(bossConfig).forEach(bossName => {
+    const needs = data.filter(e => e.boss === bossName && e.status === 'need');
+    const passes = data.filter(e => e.boss === bossName && e.status === 'pass');
+    const card = document.createElement('div');
+    card.className = "boss-card shadow-lg";
+    card.style.borderLeft = `4px solid ${needs.length > 0 ? accent : '#1e293b'}`;
+    
+    card.innerHTML = `
+        <img src="${bossConfig[bossName]}" class="boss-image">
+        <div class="p-4">
+            <div class="flex justify-between items-start mb-3">
+                <h3 class="text-sm font-black uppercase text-white">${bossName}</h3>
+                <div class="flex gap-2">
+                    <span style="background:${accent}22; color:${accent}; border: 1px solid ${accent}44" class="text-[12px] px-1.5 py-0.5 rounded font-bold">Need: ${needs.length}</span>
+                    <span class="text-[12px] bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded font-bold">Pass: ${passes.length}</span>
+                </div>
+            </div>
+
+            <details class="group" ${needs.length > 0 ? 'open' : ''}>
+                <summary class="list-none cursor-pointer flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase hover:text-white transition-colors">
+                    <span>${needs.length > 0 ? 'Spieler Liste' : 'Keine Anmeldungen'}</span>
+                    <svg class="w-3 h-3 transform group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </summary>
+                
+                <div class="space-y-1.5 mt-3">
+                    ${needs.map(e => `
+                        <div class="bg-black/30 p-2 rounded flex justify-between border border-white/5 items-center">
+                            <div class="flex flex-col">
+                                <span style="color:${classColors[e.charClass] || 'white'}" class="text-[11px] font-bold uppercase">${e.name}</span>
+                                ${e.note ? `<span class="text-[11px] text-slate-500 italic leading-tight">${e.note}</span>` : ''}
+                            </div>
+                            ${isAdmin ? `<button onclick="deleteEntry(${e.id})" class="text-red-500 hover:scale-110 p-1">✕</button>` : ''}
+                        </div>`).join('')}
+                </div>
+            </details>
+
+            ${passes.length > 0 ? `
+                <div class="mt-4 pt-3 border-t border-white/5">
+                    <p class="text-[10px] text-slate-500 font-bold uppercase mb-2 tracking-widest">Gepasst:</p>
+                    <div class="flex flex-wrap gap-1.5">
+                        ${passes.map(e => `
+                            <div class="bg-white/5 px-2 py-1 rounded flex items-center gap-2 border border-white/5">
+                                <span style="color:${classColors[e.charClass] || 'white'}" class="text-[10px] font-bold uppercase">${e.name}</span>
+                                ${isAdmin ? `<button onclick="deleteEntry(${e.id})" class="text-red-500/50 hover:text-red-500 text-[10px] leading-none">✕</button>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>` : ''}
+        </div>`;
+    grid.appendChild(card);
+});
+
+            data.sort((a,b) => a.boss.localeCompare(b.boss)).forEach(e => {
+const tr = document.createElement('tr');
+    tr.innerHTML = `
+        <td class="p-4 font-bold" style="color:${classColors[e.charClass] || 'white'}">${e.name}</td>
+        <td class="p-4 text-slate-400">${e.boss}</td>
+        <td class="p-4 text-accent font-black uppercase italic">${e.status}</td>
+        <td class="p-4 text-slate-500 italic text-[11px]">${e.note || '-'}</td>
+        <td class="p-4 text-slate-600 text-[13px]">${formatDate(e.created_at)}</td> ${isAdmin ? `<td class="p-4 text-right pr-6"><button onclick="deleteEntry(${e.id})" class="text-slate-600 hover:text-red-500">✕</button></td>` : ''}`;
+    table.appendChild(tr);
+});
+        }
+
+        function switchTab(tab) {
+            document.getElementById('tab-overview').classList.toggle('hidden', tab !== 'overview');
+            document.getElementById('tab-setup').classList.toggle('hidden', tab !== 'setup');
+            document.getElementById('nav-overview').style.color = tab === 'overview' ? 'var(--primary)' : '#64748b';
+            document.getElementById('nav-overview').style.borderBottomColor = tab === 'overview' ? 'var(--primary)' : 'transparent';
+            document.getElementById('nav-setup').style.color = tab === 'setup' ? 'var(--primary)' : '#64748b';
+            document.getElementById('nav-setup').style.borderBottomColor = tab === 'setup' ? 'var(--primary)' : 'transparent';
+            if(tab === 'setup') renderSetupBosses();
+        }
+
+        function renderSetupBosses() {
+            const list = document.getElementById('setupBossList');
+            list.innerHTML = `<h2 class="text-[10px] font-bold text-slate-500 uppercase mb-4 tracking-widest">Bosse</h2>`;
+            Object.keys(bossConfig).forEach(boss => {
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left p-3 rounded border text-[11px] font-bold uppercase transition-all ${currentSetupBoss === boss ? 'border-accent bg-accent/10 text-accent' : 'border-[#1e293b] text-slate-500'}`;
+                btn.innerText = boss;
+                btn.onclick = () => selectSetupBoss(boss);
+                list.appendChild(btn);
+            });
+        }
+function setTheme(color) {
+
+    document.documentElement.style.setProperty('--primary', color);
+    
+
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    
+    const rgbaGlow = `rgba(${r}, ${g}, ${b}, 0.15)`;
+    document.documentElement.style.setProperty('--bg-glow', rgbaGlow);
+
+    localStorage.setItem('wowReclearTheme', color);
+    render();
+}
+function selectSetupBoss(boss) {
+    currentSetupBoss = boss;
+    renderSetupBosses();
+    const content = document.getElementById('setupContent');
+    
+    const allEntries = data.filter(e => e.boss === boss);
+    const needs = allEntries.filter(e => e.status === 'need');
+    const passes = allEntries.filter(e => e.status !== 'need');
+    const setupPlayers = (activeSetups[boss] || []).map(id => data.find(d => d.id === id)).filter(Boolean);
+    
+    const tanks = setupPlayers.filter(p => p.role === 'Tank');
+    const heals = setupPlayers.filter(p => p.role === 'Heal');
+    const dps = setupPlayers.filter(p => p.role === 'DPS');
+
+    const check = (classes) => setupPlayers.some(p => classes.includes(p.charClass));
+    
+    const raidBuffs = [
+        { label: "5% Intellect", cls: ["Mage"] },
+        { label: "5% Attack Power", cls: ["Warrior"] },
+        { label: "5% Stamina", cls: ["Priest"] },
+        { label: "5% Phys. Damage", cls: ["Demon Hunter"] },
+        { label: "3% Magic Damage", cls: ["Monk"] },
+        { label: "3% Versatility", cls: ["Paladin", "Druid"] },
+		{ label: "Devotion Aura", cls: ["Paladin"] },
+        { label: "Damage Reduction", cls: ["Paladin", "Evoker"] },
+        { label: "Hunter's Mark", cls: ["Hunter"] },
+        { label: "Skyfury", cls: ["Shaman"] }
+    ];
+
+    const buffHtml = raidBuffs.map(b => {
+        const ok = check(b.cls);
+        return `
+            <div class="buff-item">
+                <span class="${ok ? 'text-white' : 'text-slate-600'}">${b.label}</span>
+                <div class="status-dot ${ok ? 'dot-ok' : 'dot-missing'}"></div>
+            </div>`;
+    }).join('');
+
+    const totalBossesCount = Object.keys(bossConfig).length;
+    const participationStats = gildenSpieler.map(p => {
+        let count = 0;
+        // Wir prüfen alle Bosse im activeSetups Objekt
+        Object.keys(activeSetups).forEach(bName => {
+            const playerIdsInSetup = activeSetups[bName];
+            // Wir suchen den Eintrag dieses Spielers für diesen spezifischen Boss
+            const entry = data.find(d => d.name === p.name && d.boss === bName);
+            if (entry && playerIdsInSetup.includes(entry.id)) {
+                count++;
+            }
+        });
+        return { name: p.name, count: count, charClass: p.class };
+    }).filter(s => s.count > 0) // Nur Spieler anzeigen, die mindestens 1 Boss haben
+      .sort((a, b) => b.count - a.count); // Höchste Beteiligung zuerst
+
+const statsHtml = participationStats.map(s => {
+    let vaultText = "";
+    let vaultColor = "text-slate-600"; // Standardfarbe (keine Vault)
+
+    if (s.count >= 6) {
+        vaultText = "3x Vault";
+        vaultColor = "text-green-400";
+    } else if (s.count >= 4) {
+        vaultText = "2x Vault";
+        vaultColor = "text-yellow-400";
+    } else if (s.count >= 2) {
+        vaultText = "1x Vault";
+        vaultColor = "text-red-500";
+    }
+
+    return `
+        <div class="bg-black/20 border border-white/5 p-2 rounded flex flex-col gap-1">
+            <div class="flex justify-between items-center">
+                <span style="color:${classColors[s.charClass]}" class="text-[11px] font-bold uppercase">${s.name}</span>
+                <span class="text-[12px] font-mono font-bold text-white">
+                    ${s.count}/${totalBossesCount}
+                </span>
+            </div>
+            ${vaultText ? `
+                <div class="flex justify-end">
+                    <span class="text-[10px] font-black uppercase tracking-tighter ${vaultColor}">
+                        ${vaultText}
+                    </span>
+                </div>` : ''}
+        </div>
+    `;
+}).join('');
+
+const renderPoolBtn = (p) => `
+    <button onclick="toggleSetup('${boss}', ${p.id})" 
+        style="border-color:${activeSetups[boss]?.includes(p.id) ? 'var(--primary)' : '#1e293b'}; background:${activeSetups[boss]?.includes(p.id) ? 'var(--primary-glow)' : 'transparent'}" 
+        class="p-2 border rounded text-left min-w-[120px] transition-all">
+        <span style="color:${classColors[p.charClass]}" class="text-xs font-bold uppercase">${p.name}</span><br>
+        <span class="text-[12px] text-white/80 uppercase font-medium">${p.role}</span>
+    </button>`;
+
+    const renderRow = (p) => `
+        <div class="flex justify-between bg-white/5 p-2 rounded mb-1 border border-white/5 items-center">
+            <span style="color:${classColors[p.charClass]}" class="text-xs font-bold uppercase">${p.name}</span>
+            ${isAdmin ? `<button onclick="toggleSetup('${boss}', ${p.id})" class="text-red-500 text-xs">✕</button>` : ''}
+        </div>`;
+
+    content.innerHTML = `
+        <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
+            <div class="xl:col-span-3">
+                <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                    <h2 class="text-xl font-black uppercase italic">${boss}</h2>
+                    <div class="text-accent font-bold text-xl">${setupPlayers.length} / 20</div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="space-y-6">
+                        <div><h3 class="text-[11px] text-sky-400 font-black uppercase mb-3 tracking-widest">Brauchen Loot</h3><div class="flex flex-wrap gap-2">${needs.map(renderPoolBtn).join('')}</div></div>
+                        <div><h3 class="text-[11px] text-slate-500 font-black uppercase mb-3 tracking-widest">Pass / Kein Loot</h3><div class="flex flex-wrap gap-2">${passes.map(renderPoolBtn).join('')}</div></div>
+                    </div>
+                    <div class="bg-black/40 p-4 rounded-xl border border-white/5">
+                        <h3 class="text-[14px] text-slate-500 uppercase font-bold mb-4">Aktives Setup</h3>
+                        <div class="space-y-4">
+                            <div><div class="flex justify-between border-b border-blue-900/30 mb-2 text-[12px] text-blue-400 font-bold uppercase"><span>Tanks</span><span>${tanks.length}</span></div>${tanks.map(renderRow).join('')}</div>
+                            <div><div class="flex justify-between border-b border-green-900/30 mb-2 text-[12px] text-green-400 font-bold uppercase"><span>Heiler</span><span>${heals.length}</span></div>${heals.map(renderRow).join('')}</div>
+                            <div><div class="flex justify-between border-b border-red-900/30 mb-2 text-[12px] text-red-400 font-bold uppercase"><span>DPS</span><span>${dps.length}</span></div>${dps.map(renderRow).join('')}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+<div class="xl:col-span-1">
+                <div class="buff-sidebar bg-[#0f172a]/60 border border-white/5 p-4 rounded-xl sticky top-4">
+                    <h3 class="text-[13px] text-accent font-black uppercase mb-4 tracking-[0.2em] text-center border-b border-accent/20 pb-2">Raid Buffs/Debuffs</h3>
+                    ${buffHtml}
+                    
+                    <div class="mt-6 pt-4 border-t border-white/10 space-y-3">
+                        <div class="flex justify-between items-center text-[12px] uppercase font-bold text-slate-500">
+                            <span>Lust/Hero</span>
+                            <div class="status-dot ${check(['Shaman', 'Mage', 'Hunter', 'Evoker']) ? 'dot-ok' : 'dot-missing'}"></div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center text-[12px] uppercase font-bold text-slate-500">
+                            <span>Battle-Rez</span>
+                            <div class="status-dot ${check(['Druid', 'Death Knight', 'Warlock', 'Paladin']) ? 'dot-ok' : 'dot-missing'}"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-12 pt-8 border-t border-white/10">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-[12px] text-slate-500 font-black uppercase tracking-[0.3em]">Geplante Boss-Beteiligung (Gesamt)</h3>
+                <span class="text-[12px] text-slate-600 italic">Basierend auf allen Setups</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                ${statsHtml || '<div class="col-span-full text-center text-slate-600 text-xs uppercase py-4">Noch keine Einteilungen vorgenommen</div>'}
+            </div>
+        </div>
+    `;
+}
+
+function toggleSetup(boss, id) { 
+    if(!isAdmin) return; 
+
+    if (!activeSetups[boss]) {
+        activeSetups[boss] = [];
+    }
+
+    const idx = activeSetups[boss].indexOf(id); 
+    
+    if(idx > -1) {
+        activeSetups[boss].splice(idx, 1); 
+    } else {
+        activeSetups[boss].push(id); 
+    }
+
+    localStorage.setItem('wowSetups_v1', JSON.stringify(activeSetups)); 
+    selectSetupBoss(boss); 
+}
+
+        function setTheme(color) { 
+            document.documentElement.style.setProperty('--primary', color); 
+            document.documentElement.style.setProperty('--primary-glow', color + '33'); 
+            localStorage.setItem('wowReclearTheme', color); 
+            render(); 
+        }
+
+function checkLogin() {
+    const input = document.getElementById('adminPassword').value;
+    if (btoa(input) === _0x4a21) { 
+        isAdmin = true;
+        localStorage.setItem('adminLoggedIn', 'true');
+        
+        document.getElementById('loginSection').classList.add('hidden');
+        document.getElementById('logoutSection').classList.remove('hidden');
+        render();
+    } else {
+        alert("Falsches Passwort!");
+    }
+    document.getElementById('adminPassword').value = '';
+}
+
+function logout() {
+    isAdmin = false;
+    localStorage.removeItem('adminLoggedIn');
+    
+    document.getElementById('loginSection').classList.remove('hidden');
+    document.getElementById('logoutSection').classList.add('hidden');
+    render();
+}
+        
+        function updateSelectColor() { 
+            const playerSelect = document.getElementById('playerName');
+            const p = gildenSpieler.find(ps => ps.name === playerSelect.value); 
+            playerSelect.style.color = p ? classColors[p.class] : "white"; 
+        }
+		function formatDate(isoString) {
+    if(!isoString) return "-";
+    const date = new Date(isoString);
+    return date.toLocaleDateString('de-DE', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    }) + " Uhr";
+}
+        // INIT
+        const playerSelect = document.getElementById('playerName');
+        playerSelect.innerHTML = '<option value="" style="color: white;">Spieler wählen...</option>';
+        gildenSpieler.sort((a,b) => a.name.localeCompare(b.name)).forEach(p => {
+            const opt = document.createElement('option'); 
+            opt.value = p.name; 
+            opt.innerText = p.name; 
+            opt.style.color = classColors[p.class];
+            playerSelect.appendChild(opt);
+        });
+
+        const bossSelect = document.getElementById('bossSelect');
+        Object.keys(bossConfig).forEach(b => { let opt = document.createElement('option'); opt.value = b; opt.innerText = b; bossSelect.appendChild(opt); });
+
+const savedTheme = localStorage.getItem('wowReclearTheme') || '#38bdf8';
+setTheme(savedTheme);
+if (isAdmin) {
+    document.getElementById('loginSection').classList.add('hidden');
+    document.getElementById('logoutSection').classList.remove('hidden');
+}
+
+        fetchData();
+        setInterval(fetchData, 10000);
+		
+    </script>
+</body>
+</html>
