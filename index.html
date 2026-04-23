@@ -45,7 +45,21 @@ body::before {
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
+.boss-card.is-open {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 15px rgba(var(--primary-rgb), 0.2);
+}
 
+/* Optional: Ein pulsierender Glow-Effekt für den Rand wenn offen */
+.boss-card.is-open::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    box-shadow: inset 0 0 10px var(--primary);
+    opacity: 0.3;
+    pointer-events: none;
+}
 .boss-card { 
             background-color: #0f172a; 
             border: 1px solid #1e293b; 
@@ -85,7 +99,7 @@ body::before {
             background-color: #0f172a;
             color: white;
         }
-		.buff-sidebar {
+.buff-sidebar {
     background: rgba(15, 23, 42, 0.6);
     border-left: 1px solid rgba(56, 189, 248, 0.1);
     padding: 15px;
@@ -196,7 +210,7 @@ body::before {
                 </div>
             </div>
 
-            <div id="bossGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12"></div>
+            <div id="bossGrid" class="grid grid-cols-1 gap-4 mb-12"></div>
 
             <div class="bg-[#0f172a] rounded-xl border border-[#1e293b] overflow-hidden">
                 <table class="w-full text-left text-xs">
@@ -216,7 +230,19 @@ body::before {
             <button id="resetBtn" onclick="clearData()" class="hidden mt-4 text-[10px] text-slate-600 hover:text-red-500 uppercase font-bold">Reset Database</button>
         </div>
 
-        <div id="tab-setup" class="hidden">
+<div id="tab-setup" class="hidden">
+    <div id="setupOverviewList" class="space-y-4">
+        </div>
+
+    <div id="setupEditor" class="hidden mt-8 pt-8 border-t border-[#1e293b]">
+        <div class="flex justify-between items-center mb-6">
+            <button onclick="backToSetupOverview()" class="text-accent text-xs font-black uppercase tracking-widest hover:text-white transition">
+                ← Zurück zur Übersicht
+            </button>
+            <h2 id="editingBossName" class="text-2xl font-black uppercase italic text-white"></h2>
+        </div>
+
+</div>
             <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div class="lg:col-span-1 space-y-2" id="setupBossList"></div>
                 <div class="lg:col-span-3 bg-[#0f172a] p-6 rounded-xl border border-[#1e293b]" id="setupContent">
@@ -233,6 +259,7 @@ body::before {
 
         const _0x4a21 = "YmxhY2ttb29yZQ==";
         let data = [];
+		let openBosses = new Set();
         let activeSetups = JSON.parse(localStorage.getItem('wowSetups_v1')) || {};
         let isAdmin = localStorage.getItem('adminLoggedIn') === 'true';
         let currentSetupBoss = null;
@@ -284,12 +311,82 @@ const gildenSpieler = [
             "Beloren, Child of Alar": "https://warcraft.wiki.gg/images/Belo%27ren.jpg",
             "Midnight Falls": "https://warcraft.wiki.gg/images/Midnight_Falls.jpg"
         };
+window.deleteEntry = async function(id) {
+    if (!isAdmin) return;
 
-        async function fetchData() {
-            const { data: res, error } = await _supabase.from('loot_entries').select('*').order('created_at', { ascending: false });
-            if (error) console.error(error);
-            else { data = res; render(); if(currentSetupBoss) selectSetupBoss(currentSetupBoss); }
+    const { error } = await _supabase
+        .from('loot_entries')
+        .delete()
+        .eq('id', id);
+
+    if (!error) {
+        if (typeof data !== 'undefined') {
+            data = data.filter(e => e.id != id);
         }
+        render();
+    } else {
+        console.error("Fehler beim Löschen:", error.message);
+    }
+};
+window.clearSetup = async function() {
+    if (!isAdmin || !currentSetupBoss) return;
+    
+    const { error } = await _supabase
+        .from('raid_setups')
+        .delete()
+        .eq('boss', currentSetupBoss);
+
+    if (!error) {
+        activeSetups[currentSetupBoss] = [];
+        selectSetupBoss(currentSetupBoss);
+    } else {
+        console.error("Fehler beim Leeren:", error.message);
+    }
+};
+async function fetchData() {
+    try {
+        const { data: res, error: lootError } = await _supabase
+            .from('loot_entries')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (lootError) {
+            console.error("Fehler bei loot_entries:", lootError);
+        } else {
+            data = res; 
+        }
+
+        const { data: sData, error: sError } = await _supabase
+            .from('raid_setups')
+            .select('*');
+
+        if (sError) {
+            console.error("Fehler bei raid_setups:", sError);
+        } else {
+            const newActiveSetups = {};
+            if (sData) {
+                sData.forEach(row => {
+                    if (!newActiveSetups[row.boss]) {
+                        newActiveSetups[row.boss] = [];
+                    }
+                    const pId = row.player_id || row.id;
+                    newActiveSetups[row.boss].push(parseInt(pId));
+                });
+            }
+            activeSetups = newActiveSetups;
+        }
+
+
+        render(); 
+        
+        if (currentSetupBoss) {
+            selectSetupBoss(currentSetupBoss); 
+        }
+
+    } catch (err) {
+        console.error("Fehler in fetchData:", err);
+    }
+}
 
         async function addEntry() {
             const name = document.getElementById('playerName').value;
@@ -377,88 +474,182 @@ async function addEntry() {
 Object.keys(bossConfig).forEach(bossName => {
     const needs = data.filter(e => e.boss === bossName && e.status === 'need');
     const passes = data.filter(e => e.boss === bossName && e.status === 'pass');
+    
+    const tanks = needs.filter(e => e.role === 'Tank').length;
+    const healer = needs.filter(e => e.role === 'Heal').length;
+    const dps = needs.filter(e => e.role === 'DPS').length;
+
+    const isOpen = openBosses.has(bossName);
     const card = document.createElement('div');
-    card.className = "boss-card shadow-lg";
-    card.style.borderLeft = `4px solid ${needs.length > 0 ? accent : '#1e293b'}`;
+    
+    card.className = `boss-card col-span-full bg-[#0f172a] border border-[#1e293b] rounded-xl overflow-hidden mb-4 shadow-2xl transition-all flex flex-col ${isOpen ? 'is-open' : ''}`;
     
     card.innerHTML = `
-        <img src="${bossConfig[bossName]}" class="boss-image">
-        <div class="p-4">
-            <div class="flex justify-between items-start mb-3">
-                <h3 class="text-sm font-black uppercase text-white">${bossName}</h3>
-                <div class="flex gap-2">
-                    <span style="background:${accent}22; color:${accent}; border: 1px solid ${accent}44" class="text-[12px] px-1.5 py-0.5 rounded font-bold">Need: ${needs.length}</span>
-                    <span class="text-[12px] bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded font-bold">Pass: ${passes.length}</span>
-                </div>
+        <div onclick="toggleBoss('${bossName}')" class="flex items-center p-4 gap-6 cursor-pointer hover:bg-white/5 transition-colors w-full">
+            
+            <div class="w-32 h-20 flex-shrink-0">
+                <img src="${bossConfig[bossName]}" class="w-full h-full object-cover rounded-lg border border-[#1e293b] shadow-lg">
             </div>
 
-            <details class="group" ${needs.length > 0 ? 'open' : ''}>
-                <summary class="list-none cursor-pointer flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase hover:text-white transition-colors">
-                    <span>${needs.length > 0 ? 'Spieler Liste' : 'Keine Anmeldungen'}</span>
-                    <svg class="w-3 h-3 transform group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </summary>
-                
-                <div class="space-y-1.5 mt-3">
-                    ${needs.map(e => `
-                        <div class="bg-black/30 p-2 rounded flex justify-between border border-white/5 items-center">
-                            <div class="flex flex-col">
-                                <span style="color:${classColors[e.charClass] || 'white'}" class="text-[11px] font-bold uppercase">${e.name}</span>
-                                ${e.note ? `<span class="text-[11px] text-slate-500 italic leading-tight">${e.note}</span>` : ''}
-                            </div>
-                            ${isAdmin ? `<button onclick="deleteEntry(${e.id})" class="text-red-500 hover:scale-110 p-1">✕</button>` : ''}
-                        </div>`).join('')}
-                </div>
-            </details>
+            <div class="flex-grow">
+                <h3 class="text-xl font-black uppercase italic text-white tracking-[0.2em] truncate">${bossName}</h3>
+            </div>
 
-            ${passes.length > 0 ? `
-                <div class="mt-4 pt-3 border-t border-white/5">
-                    <p class="text-[10px] text-slate-500 font-bold uppercase mb-2 tracking-widest">Gepasst:</p>
-                    <div class="flex flex-wrap gap-1.5">
-                        ${passes.map(e => `
-                            <div class="bg-white/5 px-2 py-1 rounded flex items-center gap-2 border border-white/5">
-                                <span style="color:${classColors[e.charClass] || 'white'}" class="text-[10px] font-bold uppercase">${e.name}</span>
-                                ${isAdmin ? `<button onclick="deleteEntry(${e.id})" class="text-red-500/50 hover:text-red-500 text-[10px] leading-none">✕</button>` : ''}
-                            </div>
-                        `).join('')}
+            <div class="flex items-center gap-6 flex-shrink-0">
+                <div class="flex flex-col items-end">
+                    <div class="flex gap-3 mb-2 border-b border-white/5 pb-1 w-full justify-end">
+                        <span class="text-[11px] font-bold" style="color: var(--primary);">T: <span class="text-white">${tanks}</span></span>
+                        <span class="text-[11px] font-bold" style="color: var(--primary);">H: <span class="text-white">${healer}</span></span>
+                        <span class="text-[11px] font-bold" style="color: var(--primary);">D: <span class="text-white">${dps}</span></span>
                     </div>
-                </div>` : ''}
-        </div>`;
+
+                    <div class="flex gap-4">
+                        <div class="flex flex-col items-end">
+                            <span class="text-[11px] text-accent font-black uppercase opacity-70">Need</span>
+                            <span class="text-xl font-black text-white leading-none">${needs.length}</span>
+                        </div>
+                        <div class="flex flex-col items-end opacity-30">
+                            <span class="text-[11px] font-black uppercase">Pass</span>
+                            <span class="text-xl font-black text-white leading-none">${passes.length}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="text-slate-600 text-m transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}">▼</div>
+            </div>
+        </div>
+
+        <div class="w-full p-4 pt-0 border-t border-white/5 ${isOpen ? '' : 'hidden'}">
+            <div class="flex flex-wrap gap-3 mt-4">
+                ${needs.length > 0 ? needs.map(e => `
+                    <div class="bg-black/40 border border-white/5 rounded-lg p-2 px-3 flex items-center gap-3 shadow-md min-w-[140px]">
+                        <div class="w-1 h-6 rounded-full flex-shrink-0" style="background:${classColors[e.charClass] || '#fff'}"></div>
+                        <div class="flex flex-col">
+                            <span style="color:${classColors[e.charClass] || 'white'}" class="text-[13px] font-bold uppercase tracking-tight">${e.name}</span>
+                            ${e.note ? `<span class="text-[10px] text-slate-500 italic truncate w-32">${e.note}</span>` : ''}
+                        </div>
+                        ${isAdmin ? `<button onclick="event.stopPropagation(); window.deleteEntry('${e.id}')" class="ml-auto text-slate-600 hover:text-red-500 p-1">✕</button>` : ''}
+                    </div>
+                `).join('') : '<span class="text-[10px] text-slate-600 font-bold uppercase italic tracking-[0.3em] py-4 px-2">Keine Anmeldungen</span>'}
+            </div>
+
+${passes.length > 0 ? `
+                <div class="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-x-4 gap-y-2 items-center">
+                    <span class="text-[11px] text-slate-600 font-bold uppercase mr-2">Gepasst:</span>
+                    ${passes.map(e => `
+                        <div class="flex items-center gap-1 group">
+                            <span style="color:${classColors[e.charClass] || 'white'}" class="text-[12px] opacity-50 font-bold uppercase">
+                                ${e.name}
+                            </span>
+                            ${isAdmin ? `
+                                <button onclick="event.stopPropagation(); window.deleteEntry('${e.id}')" 
+                                        class="text-red-500/40 hover:text-red-500 transition-colors text-[12px] font-bold px-1"
+                                        title="${e.name} entfernen">
+                                    ✕
+                                </button>
+                            ` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
+        </div>
+    `;
     grid.appendChild(card);
 });
-
-            data.sort((a,b) => a.boss.localeCompare(b.boss)).forEach(e => {
-const tr = document.createElement('tr');
-    tr.innerHTML = `
-        <td class="p-4 font-bold" style="color:${classColors[e.charClass] || 'white'}">${e.name}</td>
-        <td class="p-4 text-slate-400">${e.boss}</td>
-        <td class="p-4 text-accent font-black uppercase italic">${e.status}</td>
-        <td class="p-4 text-slate-500 italic text-[11px]">${e.note || '-'}</td>
-        <td class="p-4 text-slate-600 text-[13px]">${formatDate(e.created_at)}</td> ${isAdmin ? `<td class="p-4 text-right pr-6"><button onclick="deleteEntry(${e.id})" class="text-slate-600 hover:text-red-500">✕</button></td>` : ''}`;
-    table.appendChild(tr);
-});
         }
 
-        function switchTab(tab) {
-            document.getElementById('tab-overview').classList.toggle('hidden', tab !== 'overview');
-            document.getElementById('tab-setup').classList.toggle('hidden', tab !== 'setup');
-            document.getElementById('nav-overview').style.color = tab === 'overview' ? 'var(--primary)' : '#64748b';
-            document.getElementById('nav-overview').style.borderBottomColor = tab === 'overview' ? 'var(--primary)' : 'transparent';
-            document.getElementById('nav-setup').style.color = tab === 'setup' ? 'var(--primary)' : '#64748b';
-            document.getElementById('nav-setup').style.borderBottomColor = tab === 'setup' ? 'var(--primary)' : 'transparent';
-            if(tab === 'setup') renderSetupBosses();
-        }
+function switchTab(tab) {
+    // 1. Container umschalten
+    document.getElementById('tab-overview').classList.toggle('hidden', tab !== 'overview');
+    document.getElementById('tab-setup').classList.toggle('hidden', tab !== 'setup');
 
-        function renderSetupBosses() {
-            const list = document.getElementById('setupBossList');
-            list.innerHTML = `<h2 class="text-[10px] font-bold text-slate-500 uppercase mb-4 tracking-widest">Bosse</h2>`;
-            Object.keys(bossConfig).forEach(boss => {
-                const btn = document.createElement('button');
-                btn.className = `w-full text-left p-3 rounded border text-[11px] font-bold uppercase transition-all ${currentSetupBoss === boss ? 'border-accent bg-accent/10 text-accent' : 'border-[#1e293b] text-slate-500'}`;
-                btn.innerText = boss;
-                btn.onclick = () => selectSetupBoss(boss);
-                list.appendChild(btn);
-            });
+    // 2. Navigation Highlighting (Optik)
+    const navOverview = document.getElementById('nav-overview');
+    const navSetup = document.getElementById('nav-setup');
+
+    // Basis-Klassen für inaktive Tabs
+    const inactiveClass = "pb-2 px-4 text-slate-500 font-bold uppercase text-xs tracking-widest hover:text-slate-300 transition-all cursor-pointer";
+    // Klassen für den aktiven Tab (mit dem farbigen Unterstrich)
+    const activeClass = "pb-2 px-4 text-accent border-b-2 border-accent font-bold uppercase text-xs tracking-widest transition-all cursor-pointer";
+
+    if (tab === 'overview') {
+        navOverview.className = activeClass;
+        navSetup.className = inactiveClass;
+        render(); // Übersicht neu zeichnen
+    } else {
+        navSetup.className = activeClass;
+        navOverview.className = inactiveClass;
+
+        // 3. Setup-Inhalt sofort aktivieren
+        // Wir schalten den Editor-Modus ein, damit kein leerer Frame/Platzhalter zu sehen ist
+        const editor = document.getElementById('setupEditor');
+        const overviewList = document.getElementById('setupOverviewList');
+        
+        if (editor) editor.classList.remove('hidden');
+        if (overviewList) overviewList.classList.add('hidden');
+
+        // Die Sidebar befüllen
+        renderSetupBosses();
+
+        // 4. Boss-Inhalt laden (entweder den letzten oder den ersten der Liste)
+        if (!currentSetupBoss) {
+            const firstBoss = Object.keys(bossConfig)[0];
+            if (firstBoss) selectSetupBoss(firstBoss);
+        } else {
+            selectSetupBoss(currentSetupBoss);
         }
+    }
+}
+window.toggleBoss = function(bossName) {
+    if (openBosses.has(bossName)) {
+        openBosses.delete(bossName); // Zuklappen
+    } else {
+        openBosses.add(bossName);    // Aufklappen
+    }
+    render(); // UI neu zeichnen, um Zustand anzuwenden
+};
+function renderSetupBosses() {
+    const list = document.getElementById('setupBossList');
+    if (!list) return;
+
+    list.innerHTML = `<h2 class="text-[12px] font-black text-slate-500 uppercase mb-4 tracking-[0.2em] border-b border-white/5 pb-2">Boss Auswahl</h2>`;
+    
+    Object.keys(bossConfig).forEach(boss => {
+        const isActive = currentSetupBoss === boss;
+        const btn = document.createElement('button');
+        
+        btn.className = `w-full text-left p-3 rounded border text-[11px] font-bold uppercase transition-all mb-2 ${
+            isActive 
+            ? 'border-accent bg-accent/10 text-accent shadow-[0_0_15px_rgba(var(--accent-rgb),0.1)]' 
+            : 'border-[#1e293b] text-slate-500 hover:border-slate-700 hover:text-slate-300'
+        }`;
+        
+        btn.innerText = boss;
+        btn.onclick = () => selectSetupBoss(boss);
+        list.appendChild(btn);
+    });
+}
+function openBossEditor(bossName) {
+    // Übersicht weg, Editor her
+    document.getElementById('setupOverviewList').classList.add('hidden');
+    document.getElementById('setupEditor').classList.remove('hidden');
+    
+    // Namen oben setzen
+    document.getElementById('editingBossName').innerText = bossName;
+    
+    // Deine vorhandene Logik aufrufen
+    currentSetupBoss = bossName;
+    selectSetupBoss(bossName); 
+    
+    // Die kleine Boss-Liste im Editor-Bereich befüllen (falls gewünscht)
+    renderMiniBossList(); 
+}
+
+// Hilfsfunktion für den "Zurück" Button
+function backToSetupOverview() {
+    document.getElementById('setupOverviewList').classList.remove('hidden');
+    document.getElementById('setupEditor').classList.add('hidden');
+}
 function setTheme(color) {
 
     document.documentElement.style.setProperty('--primary', color);
@@ -474,6 +665,101 @@ function setTheme(color) {
     localStorage.setItem('wowReclearTheme', color);
     render();
 }
+async function saveSetup() {
+    // 1. Grund-Checks
+    if (!isAdmin) {
+        alert("Nur Admins können speichern!");
+        return;
+    }
+    if (!currentSetupBoss) {
+        alert("Bitte wähle zuerst einen Boss aus!");
+        return;
+    }
+
+    const boss = currentSetupBoss;
+    // Wir holen die IDs und stellen sicher, dass es nur reine Nummern sind
+    const playerIds = (activeSetups[boss] || []).map(id => 
+        (typeof id === 'object' && id !== null) ? id.id : parseInt(id)
+    );
+
+    // 2. Daten für Supabase aufbereiten
+    const insertData = playerIds.map(pId => {
+        const player = gildenSpieler.find(g => g.id === pId);
+        return {
+            boss: boss,
+            player_id: pId, // Prüfe, ob die Spalte in Supabase exakt so heißt!
+            name: player ? player.name : "Unbekannt"
+        };
+    });
+
+    // DEBUG: Schau in die Browser-Konsole (F12)
+    console.log("Speichervorgang gestartet für:", boss);
+    console.log("Datenpaket:", insertData);
+
+    try {
+        // SCHRITT A: Erstmal die alten Einträge für diesen Boss löschen
+        const { error: delError } = await _supabase
+            .from('raid_setups')
+            .delete()
+            .eq('boss', boss);
+
+        if (delError) {
+            console.error("Fehler beim Löschen alter Daten:", delError);
+            throw delError;
+        }
+
+        // SCHRITT B: Neue Daten einfügen (nur wenn die Liste nicht leer ist)
+        if (insertData.length > 0) {
+            const { data, error: insError } = await _supabase
+                .from('raid_setups')
+                .insert(insertData)
+                .select(); // Bestätigung von DB anfordern
+
+            if (insError) {
+                console.error("Fehler beim Insert:", insError);
+                throw insError;
+            }
+            console.log("Erfolgreich in DB gespeichert:", data);
+        } else {
+            console.log("Keine Spieler im Setup - Tabelle für diesen Boss jetzt leer.");
+        }
+        // UI und Daten neu synchronisieren
+        await fetchData(); 
+
+    } catch (err) {
+        console.error("Kritischer Fehler im saveSetup:", err);
+        alert("Fehler beim Speichern! Details in der Konsole (F12).");
+    }
+}
+function toggleSetup(boss, id) { 
+    // 1. Sicherheits-Check: Nur Admins dürfen schieben
+    if(!isAdmin) return; 
+
+    // 2. Falls für diesen Boss noch gar kein Setup-Objekt existiert, erstelle eines
+    if (!activeSetups[boss]) {
+        activeSetups[boss] = [];
+    }
+
+    // 3. Sicherstellen, dass die ID eine Zahl ist (wichtig für den Vergleich)
+    const playerId = parseInt(id);
+    
+    // 4. Prüfen, ob der Spieler schon im aktiven Setup für diesen Boss ist
+    const idx = activeSetups[boss].indexOf(playerId); 
+    
+    if(idx > -1) {
+        // Spieler ist bereits im Setup -> wir entfernen ihn (Ausschalten)
+        activeSetups[boss].splice(idx, 1); 
+    } else {
+        // Spieler ist noch nicht drin -> wir fügen die ID hinzu (Einschalten)
+        activeSetups[boss].push(playerId); 
+    }
+
+    // 5. Lokal speichern (damit es beim Refresh nicht sofort weg ist)
+    localStorage.setItem('wowSetups_v1', JSON.stringify(activeSetups)); 
+
+    // 6. Die Anzeige sofort neu zeichnen, damit man die Änderung sieht
+    selectSetupBoss(boss); 
+}
 function selectSetupBoss(boss) {
     currentSetupBoss = boss;
     renderSetupBosses();
@@ -482,114 +768,145 @@ function selectSetupBoss(boss) {
     const allEntries = data.filter(e => e.boss === boss);
     const needs = allEntries.filter(e => e.status === 'need');
     const passes = allEntries.filter(e => e.status !== 'need');
-    const setupPlayers = (activeSetups[boss] || []).map(id => data.find(d => d.id === id)).filter(Boolean);
+
+    // Korrektur: Suche Spieler in gildenSpieler anhand der ID im Setup
+    const setupPlayers = (activeSetups[boss] || []).map(id => 
+        gildenSpieler.find(g => g.id === id)
+    ).filter(Boolean);
     
     const tanks = setupPlayers.filter(p => p.role === 'Tank');
     const heals = setupPlayers.filter(p => p.role === 'Heal');
     const dps = setupPlayers.filter(p => p.role === 'DPS');
 
-    const check = (classes) => setupPlayers.some(p => classes.includes(p.charClass));
+const check = (classes) => {
+    return setupPlayers.some(p => {
+        // Wir prüfen sowohl 'charClass' als auch 'class', um sicherzugehen
+        const pClass = p.charClass || p.class;
+        return classes.includes(pClass);
+    });
+};
     
-    const raidBuffs = [
-        { label: "5% Intellect", cls: ["Mage"] },
-        { label: "5% Attack Power", cls: ["Warrior"] },
-        { label: "5% Stamina", cls: ["Priest"] },
-        { label: "5% Phys. Damage", cls: ["Monk"] },
-        { label: "3% Magic Damage", cls: ["Demon Hunter"] },
-        { label: "3% Versatility", cls: ["Druid"] },
-		{ label: "3.6% Damage Reduction", cls: ["Rogue"] },
-		{ label: "Devotion Aura", cls: ["Paladin"] },
-        { label: "Hunter's Mark", cls: ["Hunter"] },
-        { label: "Skyfury", cls: ["Shaman"] }
-    ];
+const raidBuffs = [
+    { label: "5% Intellect", cls: ["Mage"] },
+    { label: "5% Attack Power", cls: ["Warrior"] },
+    { label: "5% Stamina", cls: ["Priest"] },
+    { label: "5% Phys. Damage", cls: ["Monk"] },
+    { label: "3% Magic Damage", cls: ["Demon Hunter"] },
+    { label: "3% Versatility", cls: ["Druid"] },
+    { label: "3.6% Damage Reduction", cls: ["Rogue"] },
+    { label: "Devotion Aura", cls: ["Paladin"] },
+    { label: "Hunter's Mark", cls: ["Hunter"] },
+    { label: "Skyfury", cls: ["Shaman"] }
+];
 
-    const buffHtml = raidBuffs.map(b => {
-        const ok = check(b.cls);
-        return `
-            <div class="buff-item">
-                <span class="${ok ? 'text-white' : 'text-slate-600'}">${b.label}</span>
-                <div class="status-dot ${ok ? 'dot-ok' : 'dot-missing'}"></div>
-            </div>`;
-    }).join('');
+// 3. Das HTML für die Buffs
+const buffHtml = raidBuffs.map(b => {
+    const ok = check(b.cls);
+    return `
+        <div class="buff-item flex items-center justify-between mb-2">
+            <span class="${ok ? 'text-white' : 'text-slate-600'} text-[11px] font-bold uppercase">${b.label}</span>
+            <div class="w-2 h-2 rounded-full ${ok ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-slate-800'}"></div>
+        </div>`;
+}).join('');
 
     const totalBossesCount = Object.keys(bossConfig).length;
     const participationStats = gildenSpieler.map(p => {
         let count = 0;
-        // Wir prüfen alle Bosse im activeSetups Objekt
         Object.keys(activeSetups).forEach(bName => {
-            const playerIdsInSetup = activeSetups[bName];
-            // Wir suchen den Eintrag dieses Spielers für diesen spezifischen Boss
-            const entry = data.find(d => d.name === p.name && d.boss === bName);
-            if (entry && playerIdsInSetup.includes(entry.id)) {
-                count++;
-            }
+            if (activeSetups[bName]?.includes(p.id)) count++;
         });
         return { name: p.name, count: count, charClass: p.class };
-    }).filter(s => s.count > 0) // Nur Spieler anzeigen, die mindestens 1 Boss haben
-      .sort((a, b) => b.count - a.count); // Höchste Beteiligung zuerst
+    }).filter(s => s.count > 0).sort((a, b) => b.count - a.count);
 
-const statsHtml = participationStats.map(s => {
-    let vaultText = "";
-    let vaultColor = "text-slate-600"; // Standardfarbe (keine Vault)
+    const statsHtml = participationStats.map(s => {
+        let vaultText = "";
+        let vaultColor = "text-slate-600";
+        if (s.count >= 6) { vaultText = "3x Vault"; vaultColor = "text-green-400"; }
+        else if (s.count >= 4) { vaultText = "2x Vault"; vaultColor = "text-yellow-400"; }
+        else if (s.count >= 2) { vaultText = "1x Vault"; vaultColor = "text-red-500"; }
 
-    if (s.count >= 6) {
-        vaultText = "3x Vault";
-        vaultColor = "text-green-400";
-    } else if (s.count >= 4) {
-        vaultText = "2x Vault";
-        vaultColor = "text-yellow-400";
-    } else if (s.count >= 2) {
-        vaultText = "1x Vault";
-        vaultColor = "text-red-500";
-    }
+        return `
+            <div class="bg-black/20 border border-white/5 p-2 rounded flex flex-col gap-1">
+                <div class="flex justify-between items-center">
+                    <span style="color:${classColors[s.charClass]}" class="text-[11px] font-bold uppercase">${s.name}</span>
+                    <span class="text-[12px] font-mono font-bold text-white">${s.count}/${totalBossesCount}</span>
+                </div>
+                ${vaultText ? `<div class="flex justify-end"><span class="text-[10px] font-black uppercase tracking-tighter ${vaultColor}">${vaultText}</span></div>` : ''}
+            </div>`;
+    }).join('');
+
+const renderPoolBtn = (p) => {
+    if (!p) return '';
+    
+    const color = classColors[p.charClass || p.class] || '#ffffff';
+    const isSelected = (activeSetups[currentSetupBoss] || []).includes(p.id);
 
     return `
-        <div class="bg-black/20 border border-white/5 p-2 rounded flex flex-col gap-1">
-            <div class="flex justify-between items-center">
-                <span style="color:${classColors[s.charClass]}" class="text-[11px] font-bold uppercase">${s.name}</span>
-                <span class="text-[12px] font-mono font-bold text-white">
-                    ${s.count}/${totalBossesCount}
-                </span>
-            </div>
-            ${vaultText ? `
-                <div class="flex justify-end">
-                    <span class="text-[10px] font-black uppercase tracking-tighter ${vaultColor}">
-                        ${vaultText}
-                    </span>
-                </div>` : ''}
-        </div>
-    `;
-}).join('');
+        <button onclick="toggleSetup('${currentSetupBoss}', ${p.id})" 
+            style="border-color:${isSelected ? 'var(--primary)' : '#1e293b'}; 
+                   background:${isSelected ? 'var(--primary-glow)' : 'transparent'}" 
+            class="p-2 border rounded text-left min-w-[120px] transition-all">
+            <span style="color:${color}" class="text-xs font-bold uppercase font-black">${p.name}</span><br>
+            <span class="text-[12px] text-white/80 uppercase font-medium">${p.role}</span>
+        </button>`;
+};
+const renderRow = (p) => {
+    const playerClass = p.charClass || p.class;
+    const color = classColors[playerClass] || '#ffffff'; // Fallback auf Weiß
 
-const renderPoolBtn = (p) => `
-    <button onclick="toggleSetup('${boss}', ${p.id})" 
-        style="border-color:${activeSetups[boss]?.includes(p.id) ? 'var(--primary)' : '#1e293b'}; background:${activeSetups[boss]?.includes(p.id) ? 'var(--primary-glow)' : 'transparent'}" 
-        class="p-2 border rounded text-left min-w-[120px] transition-all">
-        <span style="color:${classColors[p.charClass]}" class="text-xs font-bold uppercase">${p.name}</span><br>
-        <span class="text-[12px] text-white/80 uppercase font-medium">${p.role}</span>
-    </button>`;
-
-    const renderRow = (p) => `
+    return `
         <div class="flex justify-between bg-white/5 p-2 rounded mb-1 border border-white/5 items-center">
-            <span style="color:${classColors[p.charClass]}" class="text-xs font-bold uppercase">${p.name}</span>
-            ${isAdmin ? `<button onclick="toggleSetup('${boss}', ${p.id})" class="text-red-500 text-xs">✕</button>` : ''}
+            <span style="color:${color}" class="text-xs font-bold uppercase font-black">
+                ${p.name}
+            </span>
+            ${isAdmin ? `
+                <button onclick="toggleSetup('${currentSetupBoss}', ${p.id})" 
+                        class="text-red-500 hover:text-red-400 text-xs font-bold px-2">
+                    ✕
+                </button>
+            ` : ''}
         </div>`;
-
+};
     content.innerHTML = `
         <div class="grid grid-cols-1 xl:grid-cols-4 gap-6">
             <div class="xl:col-span-3">
                 <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
                     <h2 class="text-xl font-black uppercase italic">${boss}</h2>
-                    <div class="text-accent font-bold text-xl">${setupPlayers.length} / 20</div>
+                    <div class="flex items-center gap-4">
+                        <div class="text-accent font-bold text-xl mr-4">${setupPlayers.length} / 20</div>
+                        
+${isAdmin ? `
+<div class="flex gap-3">
+    <button onclick="copySetupToDiscord()" 
+        class="bg-white/5 border border-white/10 hover:border-accent/50 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all hover:bg-accent/10 active:scale-95 shadow-lg">
+        Text Kopieren
+    </button>
+    <button onclick="saveSetup()" 
+        class="bg-accent hover:bg-white text-black px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_0_15px_rgba(var(--accent-rgb),0.3)] active:scale-95">
+        Setup Speichern
+    </button>
+</div>
+` : ''}
+                    </div>
                 </div>
 
                 <div class="grid md:grid-cols-2 gap-8">
                     <div class="space-y-6">
-                        <div><h3 class="text-[11px] text-sky-400 font-black uppercase mb-3 tracking-widest">Brauchen Loot</h3><div class="flex flex-wrap gap-2">${needs.map(renderPoolBtn).join('')}</div></div>
-                        <div><h3 class="text-[11px] text-slate-500 font-black uppercase mb-3 tracking-widest">Pass / Kein Loot</h3><div class="flex flex-wrap gap-2">${passes.map(renderPoolBtn).join('')}</div></div>
+                        <div><h3 class="text-[11px] text-sky-400 font-black uppercase mb-3 tracking-widest">Brauchen Loot</h3><div class="flex flex-wrap gap-2">${needs.map(p => renderPoolBtn(gildenSpieler.find(g => g.name === p.name))).join('')}</div></div>
+                        <div><h3 class="text-[11px] text-slate-500 font-black uppercase mb-3 tracking-widest">Pass / Kein Loot</h3><div class="flex flex-wrap gap-2">${passes.map(p => renderPoolBtn(gildenSpieler.find(g => g.name === p.name))).join('')}</div></div>
                     </div>
                     <div class="bg-black/40 p-4 rounded-xl border border-white/5">
-                        <h3 class="text-[14px] text-slate-500 uppercase font-bold mb-4">Aktives Setup</h3>
+<div class="flex justify-between items-center mb-4">
+    <h3 class="text-white font-black uppercase italic tracking-widest text-sm">Aktives Setup</h3>
+
+    ${isAdmin ? `
+<button onclick="window.clearSetup()" 
+                class="text-[10px] opacity-40 hover:opacity-100 font-bold uppercase tracking-[0.2em] transition-all"
+                style="color: var(--primary);">
+            [ Clear Setup ]
+        </button>
+    ` : ''}
+</div>
                         <div class="space-y-4">
                             <div><div class="flex justify-between border-b border-blue-900/30 mb-2 text-[12px] text-blue-400 font-bold uppercase"><span>Tanks</span><span>${tanks.length}</span></div>${tanks.map(renderRow).join('')}</div>
                             <div><div class="flex justify-between border-b border-green-900/30 mb-2 text-[12px] text-green-400 font-bold uppercase"><span>Heiler</span><span>${heals.length}</span></div>${heals.map(renderRow).join('')}</div>
@@ -599,21 +916,24 @@ const renderPoolBtn = (p) => `
                 </div>
             </div>
 
-<div class="xl:col-span-1">
+            <div class="xl:col-span-1">
                 <div class="buff-sidebar bg-[#0f172a]/60 border border-white/5 p-4 rounded-xl sticky top-4">
                     <h3 class="text-[13px] text-accent font-black uppercase mb-4 tracking-[0.2em] text-center border-b border-accent/20 pb-2">Raid Buffs/Debuffs</h3>
                     ${buffHtml}
-                    
-                    <div class="mt-6 pt-4 border-t border-white/10 space-y-3">
-                        <div class="flex justify-between items-center text-[12px] uppercase font-bold text-slate-500">
-                            <span>Lust/Hero</span>
-                            <div class="status-dot ${check(['Shaman', 'Mage', 'Hunter', 'Evoker']) ? 'dot-ok' : 'dot-missing'}"></div>
-                        </div>
-                        
-                        <div class="flex justify-between items-center text-[12px] uppercase font-bold text-slate-500">
-                            <span>Battle-Rez</span>
-                            <div class="status-dot ${check(['Druid', 'Death Knight', 'Warlock', 'Paladin']) ? 'dot-ok' : 'dot-missing'}"></div>
-                        </div>
+<div class="mt-6 pt-4 border-t border-white/10 space-y-3">
+    <div class="flex justify-between items-center">
+        <span class="${check(['Shaman', 'Mage', 'Hunter', 'Evoker']) ? 'text-white' : 'text-slate-600'} text-[12px] uppercase font-bold transition-colors">
+            Lust/Hero
+        </span>
+        <div class="w-2 h-2 rounded-full ${check(['Shaman', 'Mage', 'Hunter', 'Evoker']) ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-slate-800'}"></div>
+    </div>
+
+    <div class="flex justify-between items-center">
+        <span class="${check(['Druid', 'Death Knight', 'Warlock', 'Paladin']) ? 'text-white' : 'text-slate-600'} text-[12px] uppercase font-bold transition-colors">
+            Battle-Rez
+        </span>
+        <div class="w-2 h-2 rounded-full ${check(['Druid', 'Death Knight', 'Warlock', 'Paladin']) ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-slate-800'}"></div>
+    </div>
                     </div>
                 </div>
             </div>
@@ -631,32 +951,90 @@ const renderPoolBtn = (p) => `
     `;
 }
 
-function toggleSetup(boss, id) { 
-    if(!isAdmin) return; 
-
-    if (!activeSetups[boss]) {
-        activeSetups[boss] = [];
-    }
-
-    const idx = activeSetups[boss].indexOf(id); 
-    
-    if(idx > -1) {
-        activeSetups[boss].splice(idx, 1); 
-    } else {
-        activeSetups[boss].push(id); 
-    }
-
-    localStorage.setItem('wowSetups_v1', JSON.stringify(activeSetups)); 
-    selectSetupBoss(boss); 
-}
-
         function setTheme(color) { 
             document.documentElement.style.setProperty('--primary', color); 
             document.documentElement.style.setProperty('--primary-glow', color + '33'); 
             localStorage.setItem('wowReclearTheme', color); 
             render(); 
         }
+function copySetupToDiscord() {
+    if (!currentSetupBoss || !activeSetups[currentSetupBoss]) return;
+    
+    const boss = currentSetupBoss;
+    const players = (activeSetups[boss] || []).map(entry => {
+        const id = typeof entry === 'object' ? entry.id : entry;
+        return gildenSpieler.find(g => g.id === id);
+    }).filter(Boolean);
 
+    const tanks = players.filter(p => p.role === 'Tank');
+    const heals = players.filter(p => p.role === 'Heal');
+    const dps = players.filter(p => p.role === 'DPS');
+
+    let text = `Raid-Setup: ${boss} \n`;
+    text += `Teilnehmer: ${players.length} / 20\n\n`;
+
+    text += `TANKS\n${tanks.map(p => `- ${p.name}`).join('\n') || 'Keine'}\n\n`;
+    text += `HEALS\n${heals.map(p => `- ${p.name}`).join('\n') || 'Keine'}\n\n`;
+    text += `DPS\n${dps.map(p => `- ${p.name}`).join('\n') || 'Keine'}\n`;
+
+    // In die Zwischenablage kopieren
+    navigator.clipboard.writeText(text).then(() => {
+        alert("Setup für Discord kopiert!");
+    });
+}
+function downloadSetupAsImage() {
+    if (!currentSetupBoss) return;
+    const boss = currentSetupBoss;
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 600;
+    canvas.height = 800;
+
+    // Hintergrund
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Header
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 30px Arial';
+    ctx.fillText(boss.toUpperCase(), 40, 60);
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '20px Arial';
+    ctx.fillText(`Raid Setup - ${new Date().toLocaleDateString()}`, 40, 90);
+
+    // Spieler zeichnen
+    let y = 150;
+    const players = (activeSetups[boss] || []).map(entry => {
+        const id = typeof entry === 'object' ? entry.id : entry;
+        return gildenSpieler.find(g => g.id === id);
+    }).filter(Boolean);
+
+    const drawSection = (title, list, color) => {
+        ctx.fillStyle = color;
+        ctx.font = 'bold 22px Arial';
+        ctx.fillText(title, 40, y);
+        y += 30;
+        ctx.font = '18px Arial';
+        ctx.fillStyle = '#cbd5e1';
+        list.forEach(p => {
+            ctx.fillText(`• ${p.name} (${p.charClass})`, 60, y);
+            y += 25;
+        });
+        y += 20;
+    };
+
+    drawSection("SHIELD - TANKS", players.filter(p => p.role === 'Tank'), '#60a5fa');
+    drawSection("HEARTS - HEALERS", players.filter(p => p.role === 'Heal'), '#4ade80');
+    drawSection("SWORDS - DPS", players.filter(p => p.role === 'DPS'), '#f87171');
+
+    // Download Link
+    const link = document.createElement('a');
+    link.download = `Setup_${boss}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+}
 function checkLogin() {
     const input = document.getElementById('adminPassword').value;
     if (btoa(input) === _0x4a21) { 
@@ -718,7 +1096,14 @@ if (isAdmin) {
 }
 
         fetchData();
-        setInterval(fetchData, 10000);
+setInterval(() => {
+    // Nur aktualisieren, wenn wir NICHT im Setup-Tab sind
+    const isSetupTab = !document.getElementById('tab-setup').classList.contains('hidden');
+    
+    if (!isSetupTab) {
+        fetchData();
+    }
+}, 30000); // alle 30
 		
     </script>
 </body>
